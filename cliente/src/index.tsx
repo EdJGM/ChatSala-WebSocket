@@ -6,10 +6,12 @@ import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from "react-router-dom"
 
 
-// Importar estilos de PrimeReact
-import 'primereact/resources/themes/lara-light-indigo/theme.css'; // Tema de PrimeReact
-import 'primereact/resources/primereact.min.css'; // Estilos principales de PrimeReact
-import 'primeicons/primeicons.css'; // Iconos de PrimeIcons
+// // Importar estilos de PrimeReact
+// import 'primereact/resources/themes/lara-light-indigo/theme.css'; // Tema de PrimeReact
+// import 'primereact/resources/primereact.min.css'; // Estilos principales de PrimeReact
+// import 'primeicons/primeicons.css'; // Iconos de PrimeIcons
+
+
 
 
 const root = ReactDOM.createRoot(
