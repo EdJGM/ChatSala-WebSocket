@@ -1,4 +1,4 @@
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription } from "../components/ui/alert"
 import { InfoIcon, AlertCircleIcon, CheckCircleIcon } from "lucide-react"
 
 interface ChatNotificationProps {

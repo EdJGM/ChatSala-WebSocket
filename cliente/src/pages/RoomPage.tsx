@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useRef, useState } from "react"
-import { useParams, useSearchParams } from "next/navigation"
+import { useParams, useSearchParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { Textarea } from "../components/ui/textarea"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
@@ -33,9 +33,8 @@ interface Participant {
 }
 
 export default function ChatRoom() {
-  const params = useParams()
-  const searchParams = useSearchParams()
-  const roomPin = params.pin as string
+  const { pin: roomPin } = useParams<{ pin: string }>()
+  const [searchParams] = useSearchParams()
   const nickname = searchParams.get("nickname") || ""
 
   // States

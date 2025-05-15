@@ -1,11 +1,11 @@
 import './App.css';
-import { Chat } from './components/chat';
+import HomePage from './pages/HomePage';
 
 
 
 function App() {
   return (
-      <Chat />
+      <HomePage />
   );
 }
 
