@@ -122,6 +122,19 @@ export default function ChatRoom() {
         window.location.href = "/"
       });
 
+      socketRef.current.on("error", (err: { message: string }) => {
+        setNotification({ message: err.message, type: "error" });
+        setTimeout(() => (window.location.href = "/"), 3000);
+      });
+
+      socketRef.current.on("room_deleted", () => {
+        setNotification({ message: "La sala ha sido eliminada por el administrador.", type: "error" });
+        setTimeout(() => {
+          socketRef.current?.disconnect();
+          window.location.href = "/";
+        }, 2000); // Da tiempo a mostrar la notificación
+      });
+
       // Cleanup on unmount
       return () => {
         if (socketRef.current) {
@@ -152,7 +165,7 @@ export default function ChatRoom() {
     }
 
     socketRef.current.emit("send_message", newMessage)
-    setMessages((prev) => [...prev, newMessage])
+    //setMessages((prev) => [...prev, newMessage])
     setMessage("")
   }
 

@@ -121,17 +121,33 @@ io.on('connection', (socket) => {
         }
 
         // Verifica si el cliente ya está en otra sala y si la sala tiene la restricción de una conexión por máquina
-        if (ipToRoom.has(clientIp) && ipToRoom.get(clientIp) !== roomPin && room.oneConnectionPerMachine) {
-            socket.emit('error', { message: 'Ya estás conectado a otra sala. Debes salir primero.' });
-            return;
-        }
+        if (room.oneConnectionPerMachine) {
+            // Si la IP ya está en cualquier sala, bloquea
+            if (ipToRoom.has(clientIp)) {
+                socket.emit('error', { message: 'Solo se permite una conexión por máquina.' });
+                return;
+            }
+            // Si la IP ya está en la sala actual, bloquea (esto cubre el caso de varias pestañas en la misma sala)
+            for (const participant of room.participants.values()) {
+                if (participant.ip === clientIp) {
+                    socket.emit('error', { message: 'Solo se permite una conexión por máquina en esta sala.' });
+                    return;
+                }
+            }
+        }        
+
+        // // Verifica si el cliente ya está en otra sala y si la sala tiene la restricción de una conexión por máquina
+        // if (ipToRoom.has(clientIp) && ipToRoom.get(clientIp) !== roomPin && room.oneConnectionPerMachine) {
+        //     socket.emit('error', { message: 'Ya estás conectado a otra sala. Debes salir primero.' });
+        //     return;
+        // }
 
         // Guarda información del usuario
         userNickname = nickname;
         currentRoom = roomPin;
 
         // Añade el usuario a la sala
-        room.participants.set(socket.id, { nickname, id: socket.id });
+        room.participants.set(socket.id, { nickname, id: socket.id, ip: clientIp });
 
         // Si la sala tiene restricción de una conexión por máquina, registra la IP
         if (room.oneConnectionPerMachine) {
