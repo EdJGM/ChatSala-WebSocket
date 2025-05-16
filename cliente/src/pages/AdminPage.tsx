@@ -46,6 +46,12 @@ export default function AdminPanel() {
       newSocket.emit("get_rooms")
     })
 
+    // Escuchar cambios en participantes de cualquier sala
+    newSocket.on("rooms_update", () => {
+      // Solicitar la lista actualizada de salas
+      newSocket.emit("get_rooms")
+    })    
+
     // Manejar errores de conexión
     newSocket.on("connect_error", (error: any) => {
       console.error("Error de conexión:", error)

@@ -20,7 +20,8 @@ const dns = require('dns');
 const app = express();
 
 // Configura CORS usando el origen que definimos en .env
-app.use(cors({ origin: process.env.CORS_ORIGIN }));
+//app.use(cors({ origin: process.env.CORS_ORIGIN }));
+app.use(cors({ origin: true, credentials: true }));
 
 // Crea el servidor HTTP a partir de la app de Express
 const server = http.createServer(app);
@@ -28,8 +29,10 @@ const server = http.createServer(app);
 // Inicializa Socket.IO sobre el servidor HTTP y aplica la misma política CORS
 const io = new Server(server, {
     cors: {
-        origin: process.env.CORS_ORIGIN,
-        methods: ["GET", "POST"]
+        origin: true,
+        //origin: process.env.CORS_ORIGIN,
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
@@ -144,6 +147,9 @@ io.on('connection', (socket) => {
         // Envía la lista actualizada de participantes
         const participantsList = Array.from(room.participants.values());
         io.to(roomPin).emit('participants_update', participantsList);
+        
+        //Notifica a todos los admins para refrescar la lista de salas
+        io.emit('rooms_update');
 
         console.log(`${nickname} se unió a la sala ${roomPin}`);
     });    
@@ -222,6 +228,8 @@ io.on('connection', (socket) => {
             // Actualiza la lista de participantes
             const participantsList = Array.from(room.participants.values());
             io.to(currentRoom).emit('participants_update', participantsList);
+            // Notifica a todos los admins para refrescar la lista de salas
+            io.emit('rooms_update');
 
             // Si la sala queda vacía, la elimina después de un tiempo
             if (room.participants.size === 0) {
@@ -233,16 +241,19 @@ io.on('connection', (socket) => {
                 }, 1000 * 60 * 30); // 30 minutos
             }
 
+            socket.emit('room_left');
             console.log(`${userNickname || 'Usuario'} salió de la sala ${currentRoom}`);
 
             // Limpia las variables
             currentRoom = null;
             userNickname = null;
+
         }
     };  
     
     // Detecta cuando un cliente se desconecta
     socket.on('disconnect', () => {
+        handleDisconnect();
         console.log(`Cliente desconectado: ${clientIp}`);
     });    
 });

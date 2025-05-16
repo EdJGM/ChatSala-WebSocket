@@ -55,7 +55,7 @@ export default function ChatRoom() {
     }
 
     // mismo puerto que el backend
-    const SOCKET_SERVER_URL = "http://localhost:5000" 
+    const SOCKET_SERVER_URL = "http://192.168.100.187:5000" 
 
     try {
       socketRef.current = io(SOCKET_SERVER_URL, {
@@ -117,6 +117,11 @@ export default function ChatRoom() {
         setNotification({ message: `${user.nickname} ha abandonado la sala`, type: "info" })
       })
 
+      socketRef.current.on("room_left",() => {
+        socketRef.current?.disconnect()
+        window.location.href = "/"
+      });
+
       // Cleanup on unmount
       return () => {
         if (socketRef.current) {
@@ -162,9 +167,10 @@ export default function ChatRoom() {
   // Leave room function
   const leaveRoom = () => {
     if (socketRef.current) {
-      socketRef.current.disconnect()
+      socketRef.current.emit("leave_room")
+      //socketRef.current.disconnect()
     }
-    window.location.href = "/"
+    //window.location.href = "/"
   }
 
   // Get initials for avatar
