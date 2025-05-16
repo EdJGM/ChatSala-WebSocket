@@ -5,11 +5,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Alert, AlertDescription } from "../components/ui/alert"
 import { InfoIcon } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 export default function Home() {
   const [nickname, setNickname] = useState("")
   const [roomPin, setRoomPin] = useState("")
   const [notification, setNotification] = useState<{ message: string; type: "info" | "error" | "success" } | null>(null)
+  const navigate = useNavigate()
 
   const handleJoinRoom = () => {
     if (!nickname.trim()) {
@@ -24,7 +26,7 @@ export default function Home() {
 
     // Here you would connect to the room via WebSocket
     // For now, we'll just redirect to the room page
-    window.location.href = `/room/${roomPin}?nickname=${encodeURIComponent(nickname)}`
+    navigate(`/room/${roomPin}?nickname=${encodeURIComponent(nickname)}`)
   }
 
   return (
