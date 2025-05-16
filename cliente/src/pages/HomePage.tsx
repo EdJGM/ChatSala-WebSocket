@@ -1,17 +1,38 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Alert, AlertDescription } from "../components/ui/alert"
 import { InfoIcon } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 
 export default function Home() {
   const [nickname, setNickname] = useState("")
   const [roomPin, setRoomPin] = useState("")
+  const [roomName, setRoomName] = useState("")
   const [notification, setNotification] = useState<{ message: string; type: "info" | "error" | "success" } | null>(null)
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Verificar si hay parámetros en la URL (por ejemplo, desde el panel de administrador)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const pinParam = params.get("pin")
+    const roomNameParam = params.get("roomName")
+
+    if (pinParam) {
+      setRoomPin(pinParam)
+    }
+
+    if (roomNameParam) {
+      setRoomName(roomNameParam)
+      setNotification({
+        message: `Listo para unirte a la sala "${roomNameParam}"`,
+        type: "info"
+      })
+    }
+  }, [location])  
 
   const handleJoinRoom = () => {
     if (!nickname.trim()) {
@@ -24,8 +45,7 @@ export default function Home() {
       return
     }
 
-    // Here you would connect to the room via WebSocket
-    // For now, we'll just redirect to the room page
+    // Redirigir a la sala de chat
     navigate(`/room/${roomPin}?nickname=${encodeURIComponent(nickname)}`)
   }
 
@@ -67,7 +87,7 @@ export default function Home() {
 
                   <div className="space-y-2">
                     <label htmlFor="pin" className="text-sm font-medium">
-                      PIN de la Sala
+                      PIN de la Sala {roomName && `(${roomName})`}
                     </label>
                     <Input
                       id="pin"

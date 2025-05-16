@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
@@ -9,6 +9,8 @@ import { Separator } from "../components/ui/separator"
 import { InfoIcon, PlusIcon, UsersIcon, LockIcon, UnlockIcon, XIcon } from "lucide-react"
 import { Switch } from "../components/ui/switch"
 import { Label } from "../components/ui/label"
+import { useNavigate } from "react-router-dom"
+import { io } from "socket.io-client"
 
 interface Room {
   id: string
@@ -27,30 +29,73 @@ export default function AdminPanel() {
   const [encrypted, setEncrypted] = useState(true)
   const [oneConnectionPerMachine, setOneConnectionPerMachine] = useState(true)
   const [notification, setNotification] = useState<{ message: string; type: "info" | "error" | "success" } | null>(null)
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [socket, setSocket] = useState<any>(null)
+  const navigate = useNavigate()
 
-  // Mock rooms data (in a real app, this would come from your backend)
-  const [rooms, setRooms] = useState<Room[]>([
-    {
-      id: "1",
-      pin: "123456",
-      name: "Sala de Desarrollo",
-      maxParticipants: 10,
-      currentParticipants: 3,
-      encrypted: true,
-      oneConnectionPerMachine: true,
-      createdAt: new Date(Date.now() - 3600000),
-    },
-    {
-      id: "2",
-      pin: "654321",
-      name: "Sala de Marketing",
-      maxParticipants: 5,
-      currentParticipants: 0,
-      encrypted: true,
-      oneConnectionPerMachine: false,
-      createdAt: new Date(Date.now() - 7200000),
-    },
-  ])
+  // Conectar al servidor Socket.io
+  useEffect(() => {
+    // URL del servidor Socket.io (usar la variable de entorno en producción)
+    const SOCKET_SERVER_URL = "http://localhost:5000"
+    const newSocket = io(SOCKET_SERVER_URL)
+
+    // Manejar eventos de conexión
+    newSocket.on("connect", () => {
+      console.log("Conectado al servidor")
+      // Solicitar la lista de salas al conectar
+      newSocket.emit("get_rooms")
+    })
+
+    // Manejar errores de conexión
+    newSocket.on("connect_error", (error: any) => {
+      console.error("Error de conexión:", error)
+      setNotification({
+        message: "Error al conectar con el servidor. Intente nuevamente más tarde.",
+        type: "error",
+      })
+    })
+
+    // Recibir la lista de salas
+    newSocket.on("rooms_list", (roomsList: Room[]) => {
+      // Convertir las fechas de string a Date
+      const formattedRooms = roomsList.map(room => ({
+        ...room,
+        createdAt: new Date(room.createdAt)
+      }))
+      setRooms(formattedRooms)
+    })
+
+    // Confirmación de sala creada
+    newSocket.on("room_created", (room: any) => {
+      setNotification({
+        message: `Sala "${room.name}" creada con PIN: ${room.pin}`,
+        type: "success",
+      })
+
+      // Solicitar la lista actualizada de salas
+      newSocket.emit("get_rooms")
+
+      // Resetear el formulario
+      setRoomName("")
+      setMaxParticipants("10")
+    })
+
+    // Confirmación de sala eliminada
+    newSocket.on("room_deleted_success", (roomPin: string) => {
+      setNotification({ message: `Sala con PIN ${roomPin} eliminada`, type: "info" })
+      // Solicitar la lista actualizada de salas
+      newSocket.emit("get_rooms")
+    })
+
+    // Guardar la referencia del socket
+    setSocket(newSocket)
+
+    // Limpiar al desmontar
+    return () => {
+      newSocket.disconnect()
+    }
+  }, [])
+
 
   const createRoom = () => {
     if (!roomName.trim()) {
@@ -64,36 +109,29 @@ export default function AdminPanel() {
       return
     }
 
-    // Generate a random 6-digit PIN
-    const pin = Math.floor(100000 + Math.random() * 900000).toString()
-
-    // Create new room (in a real app, this would be sent to your backend)
-    const newRoom: Room = {
-      id: Date.now().toString(),
-      pin,
-      name: roomName,
-      maxParticipants: maxPart,
-      currentParticipants: 0,
-      encrypted,
-      oneConnectionPerMachine,
-      createdAt: new Date(),
+    if (socket) {
+      // Enviar solicitud para crear sala
+      socket.emit("create_room", {
+        name: roomName,
+        maxParticipants,
+        encrypted,
+        oneConnectionPerMachine
+      })
     }
-
-    setRooms([...rooms, newRoom])
-    setNotification({
-      message: `Sala "${roomName}" creada con PIN: ${pin}`,
-      type: "success",
-    })
-
-    // Reset form
-    setRoomName("")
-    setMaxParticipants("10")
   }
 
-  const deleteRoom = (roomId: string) => {
-    setRooms(rooms.filter((room) => room.id !== roomId))
-    setNotification({ message: "Sala eliminada", type: "info" })
+  const deleteRoom = (roomPin: string) => {
+    if (socket) {
+      socket.emit("delete_room", roomPin)
+      setRooms(rooms.filter((room) => room.id !== roomPin))
+      setNotification({ message: "Sala eliminada", type: "info" })
+    }  
   }
+
+  const joinRoom = (roomPin: string, roomName: string) => {
+    // Redirigir a la página de ingreso con el PIN prellenado
+    navigate(`/?pin=${roomPin}&roomName=${encodeURIComponent(roomName)}`)
+  }  
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -224,9 +262,14 @@ export default function AdminPanel() {
                         </TableCell>
                         <TableCell>{formatTime(room.createdAt)}</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => deleteRoom(room.id)}>
-                            <XIcon className="h-4 w-4 text-destructive" />
-                          </Button>
+                          <div className="flex space-x-2">
+                            <Button variant="outline" size="sm" onClick={() => joinRoom(room.pin, room.name)}>
+                              Unirse
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => deleteRoom(room.pin)}>
+                              <XIcon className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -47,16 +47,15 @@ export default function ChatRoom() {
   const socketRef = useRef<Socket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Connect to socket when component mounts
+  // Conectar al socket
   useEffect(() => {
     if (!nickname || !roomPin) {
       window.location.href = "/"
       return
     }
 
-    // For demo purposes, using a placeholder URL
-    // In production, use your actual WebSocket server URL
-    const SOCKET_SERVER_URL = "http://localhost:3001"
+    // mismo puerto que el backend
+    const SOCKET_SERVER_URL = "http://localhost:5000" 
 
     try {
       socketRef.current = io(SOCKET_SERVER_URL, {
@@ -70,6 +69,8 @@ export default function ChatRoom() {
       socketRef.current.on("connect", () => {
         setConnected(true)
         setNotification({ message: "Conectado a la sala", type: "success" })
+        // Unirse a la sala después de conectar
+        socketRef.current?.emit("join_room", { roomPin, nickname })
       })
 
       socketRef.current.on("connect_error", () => {
@@ -119,6 +120,8 @@ export default function ChatRoom() {
       // Cleanup on unmount
       return () => {
         if (socketRef.current) {
+          // Notifica al servidor antes de desconectar
+          socketRef.current.emit("leave_room")
           socketRef.current.disconnect()
         }
       }
