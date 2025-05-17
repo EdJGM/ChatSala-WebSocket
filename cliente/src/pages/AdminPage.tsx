@@ -26,7 +26,7 @@ interface Room {
 export default function AdminPanel() {
   const [roomName, setRoomName] = useState("")
   const [maxParticipants, setMaxParticipants] = useState("10")
-  const [encrypted, setEncrypted] = useState(true)
+  //const [encrypted, setEncrypted] = useState(true)
   const [oneConnectionPerMachine, setOneConnectionPerMachine] = useState(true)
   const [notification, setNotification] = useState<{ message: string; type: "info" | "error" | "success" } | null>(null)
   const [rooms, setRooms] = useState<Room[]>([])
@@ -120,7 +120,7 @@ export default function AdminPanel() {
       socket.emit("create_room", {
         name: roomName,
         maxParticipants,
-        encrypted,
+        //encrypted,
         oneConnectionPerMachine
       })
     }
@@ -186,7 +186,7 @@ export default function AdminPanel() {
                   />
                 </div>
 
-                <Separator className="my-4" />
+                {/* <Separator className="my-4" />
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
@@ -194,7 +194,7 @@ export default function AdminPanel() {
                     <div className="text-sm text-muted-foreground">Cifrar mensajes en el servidor</div>
                   </div>
                   <Switch id="encrypted" checked={encrypted} onCheckedChange={setEncrypted} />
-                </div>
+                </div> */}
 
                 <Separator className="my-4" />
 

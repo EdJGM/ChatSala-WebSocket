@@ -55,7 +55,7 @@ export default function ChatRoom() {
     }
 
     // mismo puerto que el backend
-    const SOCKET_SERVER_URL = "http://192.168.100.187:5000" 
+    const SOCKET_SERVER_URL = "http://192.168.1.4:5000" 
 
     try {
       socketRef.current = io(SOCKET_SERVER_URL, {
@@ -198,9 +198,23 @@ export default function ChatRoom() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col md:flex-row bg-gradient-to-b from-slate-50 to-slate-100 p-4">
+    <main className="flex min-h-screen flex-col md:flex-row bg-gradient-to-b from-slate-50 to-slate-100 p-4 relative">
+      {/* Overlay con blur si hay notificación de error */}
+      {notification?.type === "error" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          style={{ pointerEvents: "auto" }}
+        >
+          <div className="max-w-md w-full">
+            <Alert variant="destructive" className="mb-4 text-center">
+              <InfoIcon className="h-6 w-6 mr-2 inline-block" />
+              <AlertDescription className="text-lg">{notification.message}</AlertDescription>
+            </Alert>
+          </div>
+        </div>
+      )}      
       {/* Chat Area */}
-      <div className="flex-grow md:mr-4 mb-4 md:mb-0">
+      <div className={`flex-grow md:mr-4 mb-4 md:mb-0 ${notification?.type === "error" ? "pointer-events-none blur-sm" : ""}`}>
         <Card className="h-full flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex justify-between items-center">
@@ -277,7 +291,7 @@ export default function ChatRoom() {
       </div>
 
       {/* Participants Sidebar */}
-      <div className="w-full md:w-64">
+      <div className={`w-full md:w-64 ${notification?.type === "error" ? "pointer-events-none blur-sm" : ""}`}>
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="text-lg flex items-center">
