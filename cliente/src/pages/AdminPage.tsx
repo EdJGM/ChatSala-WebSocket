@@ -36,7 +36,8 @@ export default function AdminPanel() {
   // Conectar al servidor Socket.io
   useEffect(() => {
     // URL del servidor Socket.io (usar la variable de entorno en producción)
-    const SOCKET_SERVER_URL = "http://localhost:5000"
+    //const SOCKET_SERVER_URL = "http://ipmaquina:5000"
+    const SOCKET_SERVER_URL = "https://chatsala-websocket.onrender.com"
     const newSocket = io(SOCKET_SERVER_URL)
 
     // Manejar eventos de conexión
