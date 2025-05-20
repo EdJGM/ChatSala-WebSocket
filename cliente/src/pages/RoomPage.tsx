@@ -56,7 +56,7 @@ export default function ChatRoom() {
 
     // mismo puerto que el backend
     //const SOCKET_SERVER_URL = "http://ipbackend:5000"
-    const SOCKET_SERVERL_URL = "https://chatsala-websocket.onrender.com" 
+    const SOCKET_SERVER_URL = "https://chatsala-websocket.onrender.com" 
 
     try {
       socketRef.current = io(SOCKET_SERVER_URL, {
