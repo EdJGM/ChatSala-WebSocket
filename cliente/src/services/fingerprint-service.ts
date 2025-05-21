@@ -1,4 +1,3 @@
-// Importar el servicio de almacenamiento entre navegadores
 import CrossBrowserStorage from "./cross-browser-storage"
 import FingerprintJS from "@fingerprintjs/fingerprintjs"
 
@@ -64,33 +63,10 @@ class FingerprintService {
             }
 
             // Cargar la instancia de FingerprintJS
-            const fp = await FingerprintJS.load({
-                monitoring: false, // Desactivar monitoreo para evitar diferencias
-            })
+            const fp = await FingerprintJS.load()
 
-            // Obtener la información del visitante con opciones para maximizar consistencia
-            const result = await fp.get({
-                // Usar solo componentes que sean estables entre navegadores
-                components: {
-                    screenResolution: true,
-                    colorDepth: true,
-                    timezone: true,
-                    platform: true,
-                    webglRenderer: true,
-                    hardwareConcurrency: true,
-                    deviceMemory: true,
-                    // Evitar componentes que varían entre navegadores
-                    userAgent: false,
-                    language: false,
-                    fonts: false,
-                    plugins: false,
-                    localStorage: false,
-                    sessionStorage: false,
-                    cookies: false,
-                    canvas: false,
-                    audio: false,
-                },
-            })
+            // Obtener la información del visitante
+            const result = await fp.get()
 
             // Obtener información adicional del dispositivo
             const screenInfo = `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`
@@ -101,6 +77,7 @@ class FingerprintService {
             const hardwareInfo = await this.getHardwareSpecificInfo()
 
             // Combinar información que sea más estable entre navegadores
+            // Usamos el visitorId como base y añadimos información adicional
             const combinedFingerprint = `${result.visitorId}_${screenInfo}_${timeZone}_${platform}_${hardwareInfo}`
 
             // Guardar en localStorage para futuras sesiones
@@ -134,9 +111,10 @@ class FingerprintService {
 
             // Información de GPU mediante WebGL
             const canvas = document.createElement("canvas")
-            const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl")
+            const gl = canvas.getContext("webgl") as WebGLRenderingContext | null
 
             if (gl) {
+                // Verificar si el contexto es WebGLRenderingContext antes de usar getExtension
                 const debugInfo = gl.getExtension("WEBGL_debug_renderer_info")
                 if (debugInfo) {
                     const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
@@ -155,7 +133,7 @@ class FingerprintService {
     // Método de respaldo para generar una huella más simple
     private generateFallbackFingerprint(): string {
         const canvas = document.createElement("canvas")
-        const gl = canvas.getContext("webgl")
+        const gl = canvas.getContext("webgl") as WebGLRenderingContext | null
 
         let fingerprint = ""
 
