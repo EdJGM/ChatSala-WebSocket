@@ -19,6 +19,8 @@ const dns = require('dns');
 // Crea la aplicación de Express
 const app = express();
 
+app.set('trust proxy', true);
+
 // Configura CORS usando el origen que definimos en .env
 //app.use(cors({ origin: process.env.CORS_ORIGIN }));
 app.use(cors({ origin: true, credentials: true }));
@@ -54,7 +56,10 @@ function generateUniquePin() {
 // Maneja las nuevas conexiones de clientes Socket.IO
 io.on('connection', (socket) => {
     // Extrae la dirección IP del cliente (elimina el prefijo IPv6 si existe)
-    const clientIp = socket.handshake.address.replace('::ffff:', '');
+    //const clientIp = socket.handshake.address.replace('::ffff:', '');
+    const rawIp = socket.handshake.headers['x-forwarded-for']?.split(',')[0] || socket.handshake.address;
+    const clientIp = rawIp.replace('::ffff:', '').trim();
+    
     console.log(`Cliente conectado: ${clientIp}`);
 
     // Datos del cliente
