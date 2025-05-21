@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Alert, AlertDescription } from "../components/ui/alert"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
-import { InfoIcon, PlusIcon, UsersIcon, LockIcon, UnlockIcon, XIcon } from "lucide-react"
+import { InfoIcon, PlusIcon, UsersIcon, LockIcon, UnlockIcon, XIcon, ShieldIcon } from "lucide-react"
 import { Switch } from "../components/ui/switch"
 import { Label } from "../components/ui/label"
 import { useNavigate } from "react-router-dom"
@@ -22,6 +22,7 @@ interface Room {
   encrypted: boolean
   oneConnectionPerMachine: boolean
   createdAt: Date
+  isCreator: boolean // campo para indicar si el usuario actual es el creador
 }
 
 export default function AdminPanel() {
@@ -33,6 +34,7 @@ export default function AdminPanel() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [socket, setSocket] = useState<any>(null)
   const [isInitializing, setIsInitializing] = useState(true)
+  const [creatorRooms, setCreatorRooms] = useState<string[]>([]) // Lista de salas creadas por el usuario
   const navigate = useNavigate()
 
   // Inicializar el servicio de fingerprinting
@@ -113,6 +115,11 @@ export default function AdminPanel() {
       setRooms(formattedRooms)
     })
 
+    // Recibir la lista de salas creadas por el usuario
+    newSocket.on("creator_rooms", (roomPins: string[]) => {
+      setCreatorRooms(roomPins)
+    })    
+
     // Confirmación de sala creada
     newSocket.on("room_created", (room: any) => {
       setNotification({
@@ -134,6 +141,11 @@ export default function AdminPanel() {
       // Solicitar la lista actualizada de salas
       newSocket.emit("get_rooms")
     })
+
+    // Manejar errores
+    newSocket.on("error", (error: { message: string }) => {
+      setNotification({ message: error.message, type: "error" })
+    })    
 
     // Guardar la referencia del socket
     setSocket(newSocket)
@@ -179,8 +191,6 @@ export default function AdminPanel() {
   const deleteRoom = (roomPin: string) => {
     if (socket) {
       socket.emit("delete_room", roomPin)
-      setRooms(rooms.filter((room) => room.id !== roomPin))
-      setNotification({ message: "Sala eliminada", type: "info" })
     }
   }
 
@@ -299,7 +309,17 @@ export default function AdminPanel() {
                   <TableBody>
                     {rooms.map((room) => (
                       <TableRow key={room.id}>
-                        <TableCell className="font-medium">{room.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center">
+                            {room.name}
+                            {room.isCreator && (
+                              <Badge variant="outline" className="ml-2 bg-green-50">
+                                <ShieldIcon className="h-3 w-3 mr-1" />
+                                Creador
+                              </Badge>
+                            )}
+                          </div>                          
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline">{room.pin}</Badge>
                         </TableCell>
@@ -327,12 +347,20 @@ export default function AdminPanel() {
                         <TableCell>{formatTime(room.createdAt)}</TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
-                            <Button variant="outline" size="sm" onClick={() => joinRoom(room.pin, room.name)}>
-                              Unirse
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => deleteRoom(room.pin)}>
-                              <XIcon className="h-4 w-4 text-destructive" />
-                            </Button>
+                            {/* Solo mostrar botón de unirse si es el creador o si la sala no tiene restricción */}
+                            {room.isCreator && (
+                              <>
+                                <Button variant="outline" size="sm" onClick={() => joinRoom(room.pin, room.name)}>
+                                  Unirse
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteRoom(room.pin)}>
+                                  <XIcon className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </>
+                            )}
+                            {!room.isCreator && (
+                              <span className="text-sm text-muted-foreground">Solo el creador puede administrar</span>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

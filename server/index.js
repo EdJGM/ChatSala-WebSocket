@@ -40,6 +40,8 @@ const io = new Server(server, {
 const rooms = new Map()
 // Estructura para almacenar mapeo entre fingerprints de máquinas y salas
 const machineToRoom = new Map()
+// Estructura para almacenar mapeo entre creadores de salas y sus salas
+const creatorToRooms = new Map()
 
 // Función para generar un PIN único de 6 dígitos
 function generateUniquePin() {
@@ -50,6 +52,51 @@ function generateUniquePin() {
     } while (rooms.has(pin)) // Asegura que el PIN no exista ya
     return pin
 }
+
+// Función para programar la eliminación de una sala inactiva
+function scheduleRoomDeletion(roomPin, timeoutMinutes = 10) {
+    if (rooms.has(roomPin)) {
+        // Cancelar cualquier temporizador existente
+        if (rooms.get(roomPin).deletionTimer) {
+            clearTimeout(rooms.get(roomPin).deletionTimer)
+        }
+
+        // Programar la eliminación después del tiempo especificado
+        const deletionTimer = setTimeout(
+            () => {
+                if (rooms.has(roomPin)) {
+                    const room = rooms.get(roomPin)
+
+                    // Solo eliminar si la sala está vacía
+                    if (room.participants.size === 0) {
+                        // Eliminar la sala de la lista de salas del creador
+                        if (room.creatorFingerprint && creatorToRooms.has(room.creatorFingerprint)) {
+                            const creatorRooms = creatorToRooms.get(room.creatorFingerprint)
+                            const updatedRooms = creatorRooms.filter((pin) => pin !== roomPin)
+
+                            if (updatedRooms.length === 0) {
+                                creatorToRooms.delete(room.creatorFingerprint)
+                            } else {
+                                creatorToRooms.set(room.creatorFingerprint, updatedRooms)
+                            }
+                        }
+
+                        // Eliminar la sala
+                        rooms.delete(roomPin)
+                        console.log(`Sala ${roomPin} eliminada automáticamente por inactividad (${timeoutMinutes} minutos)`)
+
+                        // Notificar a todos los administradores
+                        io.emit("rooms_update")
+                    }
+                }
+            },
+            timeoutMinutes * 60 * 1000,
+        ) // Convertir minutos a milisegundos
+
+        // Guardar la referencia al temporizador en la sala
+        rooms.get(roomPin).deletionTimer = deletionTimer
+    }
+  }
 
 // Maneja las nuevas conexiones de clientes Socket.IO
 io.on("connection", (socket) => {
@@ -80,6 +127,13 @@ io.on("connection", (socket) => {
                 host: clientHost,
                 fingerprint: machineFingerprint,
             })
+
+            // Enviar al cliente la lista de salas que ha creado
+            if (machineFingerprint && creatorToRooms.has(machineFingerprint)) {
+                socket.emit("creator_rooms", creatorToRooms.get(machineFingerprint))
+            } else {
+                socket.emit("creator_rooms", [])
+            }            
         })
     })
 
@@ -107,9 +161,18 @@ io.on("connection", (socket) => {
             oneConnectionPerMachine: oneConnectionPerMachine,
             participants: new Map(),
             createdAt: new Date(),
+            creatorFingerprint: machineFingerprint, // Guardar el fingerprint del creador
+            deletionTimer: null, // Para el temporizador de eliminación automática            
         })
 
-        console.log(`Sala creada: ${name} con PIN: ${roomPin}`)
+        // Registrar esta sala como creada por este usuario
+        if (creatorToRooms.has(machineFingerprint)) {
+            creatorToRooms.get(machineFingerprint).push(roomPin)
+        } else {
+            creatorToRooms.set(machineFingerprint, [roomPin])
+        }
+
+        console.log(`Sala creada: ${name} con PIN: ${roomPin} por ${machineFingerprint}`)
 
         // Responde con el PIN generado
         socket.emit("room_created", {
@@ -160,6 +223,12 @@ io.on("connection", (socket) => {
             }
         }
 
+        // Si hay un temporizador de eliminación activo, cancelarlo
+        if (room.deletionTimer) {
+            clearTimeout(room.deletionTimer)
+            room.deletionTimer = null
+        }
+
         // Guarda información del usuario
         userNickname = nickname
         currentRoom = roomPin
@@ -170,6 +239,7 @@ io.on("connection", (socket) => {
             id: socket.id,
             ip: clientIp,
             machineFingerprint: machineFingerprint,
+            isCreator: machineFingerprint === room.creatorFingerprint,
         })
 
         // Si la sala tiene restricción de una conexión por máquina, registra la máquina
@@ -187,6 +257,7 @@ io.on("connection", (socket) => {
         const participantsList = Array.from(room.participants.values()).map((p) => ({
             nickname: p.nickname,
             id: p.id,
+            isCreator: p.machineFingerprint === room.creatorFingerprint,
         }))
         io.to(roomPin).emit("participants_update", participantsList)
 
@@ -208,6 +279,13 @@ io.on("connection", (socket) => {
 
     // Evento para obtener la lista de salas (para el panel de administrador)
     socket.on("get_rooms", () => {
+
+        // Verificar si el cliente ha enviado su fingerprint
+        if (!machineFingerprint) {
+            socket.emit("error", { message: "No se ha registrado la huella de la máquina. Recarga la página." })
+            return
+        }
+
         const roomsList = Array.from(rooms.entries()).map(([pin, room]) => ({
             id: pin,
             pin,
@@ -217,6 +295,7 @@ io.on("connection", (socket) => {
             encrypted: room.encrypted,
             oneConnectionPerMachine: room.oneConnectionPerMachine,
             createdAt: room.createdAt,
+            isCreator: room.creatorFingerprint === machineFingerprint, // Indicar si este usuario es el creador            
         }))
 
         socket.emit("rooms_list", roomsList)
@@ -224,7 +303,21 @@ io.on("connection", (socket) => {
 
     // Evento para eliminar una sala (para el panel de administrador)
     socket.on("delete_room", (roomPin) => {
+        // Verificar si el cliente ha enviado su fingerprint
+        if (!machineFingerprint) {
+            socket.emit("error", { message: "No se ha registrado la huella de la máquina. Recarga la página." })
+            return
+        }
+
         if (rooms.has(roomPin)) {
+            const room = rooms.get(roomPin)
+
+            // Verificar si el usuario es el creador de la sala
+            if (room.creatorFingerprint !== machineFingerprint) {
+                socket.emit("error", { message: "Solo el creador de la sala puede eliminarla." })
+                return
+            }
+
             // Notifica a todos los participantes que la sala ha sido eliminada
             io.to(roomPin).emit("room_deleted")
 
@@ -235,12 +328,27 @@ io.on("connection", (socket) => {
                 }
             }
 
+            // Eliminar la sala de la lista de salas del creador
+            if (creatorToRooms.has(machineFingerprint)) {
+                const creatorRooms = creatorToRooms.get(machineFingerprint)
+                const updatedRooms = creatorRooms.filter((pin) => pin !== roomPin)
+
+                if (updatedRooms.length === 0) {
+                    creatorToRooms.delete(machineFingerprint)
+                } else {
+                    creatorToRooms.set(machineFingerprint, updatedRooms)
+                }
+            }            
+
             // Elimina la sala
             rooms.delete(roomPin)
-            console.log(`Sala ${roomPin} eliminada`)
+            console.log(`Sala ${roomPin} eliminada por el creador: ${machineFingerprint}`)
 
             // Envía la lista actualizada de salas
             socket.emit("room_deleted_success", roomPin)
+
+            // Notificar a todos los administradores
+            io.emit("rooms_update")
         }
     })
 
@@ -271,23 +379,16 @@ io.on("connection", (socket) => {
             const participantsList = Array.from(room.participants.values()).map((p) => ({
                 nickname: p.nickname,
                 id: p.id,
+                isCreator: p.machineFingerprint === room.creatorFingerprint,
             }))
             io.to(currentRoom).emit("participants_update", participantsList)
 
             // Notifica a todos los admins para refrescar la lista de salas
             io.emit("rooms_update")
 
-            // Si la sala queda vacía, la elimina después de un tiempo
+            // Si la sala queda vacía, programar su eliminación después de 10 minutos
             if (room.participants.size === 0) {
-                setTimeout(
-                    () => {
-                        if (rooms.has(currentRoom) && rooms.get(currentRoom).participants.size === 0) {
-                            rooms.delete(currentRoom)
-                            console.log(`Sala ${currentRoom} eliminada por inactividad`)
-                        }
-                    },
-                    1000 * 60 * 30,
-                ) // 30 minutos
+                scheduleRoomDeletion(currentRoom, 10) // 10 minutos
             }
 
             socket.emit("room_left")

@@ -10,7 +10,7 @@ import { ScrollArea } from "../components/ui/scroll-area"
 import { Alert, AlertDescription } from "../components/ui/alert"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { Separator } from "../components/ui/separator"
-import { SendIcon, InfoIcon, UserIcon, LogOutIcon } from "lucide-react"
+import { SendIcon, InfoIcon, UserIcon, LogOutIcon, ShieldIcon } from "lucide-react"
 import { io, type Socket } from "socket.io-client"
 import fingerprintService from "../services/fingerprint-service"
 
@@ -30,6 +30,7 @@ interface HostInfo {
 interface Participant {
   nickname: string
   id: string
+  isCreator?: boolean // campo para indicar si es el creador
 }
 
 export default function ChatRoom() {
@@ -358,10 +359,18 @@ export default function ChatRoom() {
                           {getInitials(participant.nickname)}
                         </AvatarFallback>
                       </Avatar>
-                      <span className={participant.nickname === nickname ? "font-semibold" : ""}>
-                        {participant.nickname}
-                        {participant.nickname === nickname && " (tú)"}
-                      </span>
+                      <div>
+                        <span className={participant.nickname === nickname ? "font-semibold" : ""}>
+                          {participant.nickname}
+                          {participant.nickname === nickname && " (tú)"}
+                        </span>
+                        {participant.isCreator && (
+                          <Badge variant="outline" className="ml-2 bg-green-50 text-xs">
+                            <ShieldIcon className="h-3 w-3 mr-1" />
+                            Creador
+                          </Badge>
+                        )}
+                      </div> 
                     </div>
                     {index < participants.length - 1 && <Separator />}
                   </div>
