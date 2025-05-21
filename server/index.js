@@ -220,13 +220,7 @@ io.on("connection", (socket) => {
                 return
             }
 
-            // Si la IP ya está en la sala, bloquea
-            for (const participant of room.participants.values()) {
-                if (participant.ip === clientIp) {
-                    socket.emit("error", { message: "Solo se permite una conexión por dirección IP en esta sala." })
-                    return
-                }
-            }            
+          
 
             // Si la máquina ya está en la sala actual, bloquea
             for (const participant of room.participants.values()) {
