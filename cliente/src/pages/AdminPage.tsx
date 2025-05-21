@@ -11,6 +11,7 @@ import { Switch } from "../components/ui/switch"
 import { Label } from "../components/ui/label"
 import { useNavigate } from "react-router-dom"
 import { io } from "socket.io-client"
+import fingerprintService from "../services/fingerprint-service"
 
 interface Room {
   id: string
@@ -31,27 +32,67 @@ export default function AdminPanel() {
   const [notification, setNotification] = useState<{ message: string; type: "info" | "error" | "success" } | null>(null)
   const [rooms, setRooms] = useState<Room[]>([])
   const [socket, setSocket] = useState<any>(null)
+  const [isInitializing, setIsInitializing] = useState(true)
   const navigate = useNavigate()
+
+  // Inicializar el servicio de fingerprinting
+  useEffect(() => {
+    async function initializeFingerprinting() {
+      try {
+        setIsInitializing(true)
+        // Generar la huella digital al cargar la página
+        await fingerprintService.getFingerprint()
+        setIsInitializing(false)
+      } catch (error) {
+        console.error("Error al inicializar fingerprinting:", error)
+        setNotification({
+          message: "Error al inicializar la identificación del dispositivo",
+          type: "error",
+        })
+        setIsInitializing(false)
+      }
+    }
+
+    initializeFingerprinting()
+  }, [])
 
   // Conectar al servidor Socket.io
   useEffect(() => {
+
+    // Esperar a que se inicialice el fingerprinting
+    if (isInitializing) return
+
     // URL del servidor Socket.io (usar la variable de entorno en producción)
     //const SOCKET_SERVER_URL = "http://ipmaquina:5000"
     const SOCKET_SERVER_URL = "https://chatsala-websocket.onrender.com"
     const newSocket = io(SOCKET_SERVER_URL)
 
     // Manejar eventos de conexión
-    newSocket.on("connect", () => {
+    newSocket.on("connect", async () => {
       console.log("Conectado al servidor")
-      // Solicitar la lista de salas al conectar
-      newSocket.emit("get_rooms")
+      try {
+        // Obtener la huella digital
+        const fingerprint = await fingerprintService.getFingerprint()
+
+        // Registrar la huella digital en el servidor
+        newSocket.emit("register_fingerprint", { fingerprint })
+
+        // Solicitar la lista de salas al conectar
+        newSocket.emit("get_rooms")
+      } catch (error) {
+        console.error("Error al obtener la huella digital:", error)
+        setNotification({
+          message: "Error al identificar el dispositivo",
+          type: "error",
+        })
+      }
     })
 
     // Escuchar cambios en participantes de cualquier sala
     newSocket.on("rooms_update", () => {
       // Solicitar la lista actualizada de salas
       newSocket.emit("get_rooms")
-    })    
+    })
 
     // Manejar errores de conexión
     newSocket.on("connect_error", (error: any) => {
@@ -65,9 +106,9 @@ export default function AdminPanel() {
     // Recibir la lista de salas
     newSocket.on("rooms_list", (roomsList: Room[]) => {
       // Convertir las fechas de string a Date
-      const formattedRooms = roomsList.map(room => ({
+      const formattedRooms = roomsList.map((room) => ({
         ...room,
-        createdAt: new Date(room.createdAt)
+        createdAt: new Date(room.createdAt),
       }))
       setRooms(formattedRooms)
     })
@@ -101,10 +142,10 @@ export default function AdminPanel() {
     return () => {
       newSocket.disconnect()
     }
-  }, [])
+  }, [isInitializing])
 
 
-  const createRoom = () => {
+  const createRoom = async () => {
     if (!roomName.trim()) {
       setNotification({ message: "Por favor ingresa un nombre para la sala", type: "error" })
       return
@@ -117,13 +158,21 @@ export default function AdminPanel() {
     }
 
     if (socket) {
-      // Enviar solicitud para crear sala
-      socket.emit("create_room", {
-        name: roomName,
-        maxParticipants,
-        //encrypted,
-        oneConnectionPerMachine
-      })
+      try {
+        // Enviar solicitud para crear sala
+        socket.emit("create_room", {
+          name: roomName,
+          maxParticipants,
+          //encrypted,
+          oneConnectionPerMachine,
+        })
+      } catch (error) {
+        console.error("Error al crear la sala:", error)
+        setNotification({
+          message: "Error al crear la sala",
+          type: "error",
+        })
+      }
     }
   }
 
@@ -132,13 +181,13 @@ export default function AdminPanel() {
       socket.emit("delete_room", roomPin)
       setRooms(rooms.filter((room) => room.id !== roomPin))
       setNotification({ message: "Sala eliminada", type: "info" })
-    }  
+    }
   }
 
   const joinRoom = (roomPin: string, roomName: string) => {
     // Redirigir a la página de ingreso con el PIN prellenado
     navigate(`/?pin=${roomPin}&roomName=${encodeURIComponent(roomName)}`)
-  }  
+  }
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -149,6 +198,14 @@ export default function AdminPanel() {
       <div className="max-w-6xl mx-auto w-full">
         <h1 className="text-3xl font-bold mb-6">Panel de Administrador</h1>
 
+        {isInitializing ? (
+          <Card className="p-6">
+            <Alert className="mb-4">
+              <InfoIcon className="h-4 w-4 mr-2" />
+              <AlertDescription>Inicializando identificación del dispositivo...</AlertDescription>
+            </Alert>
+          </Card>
+        ) :(
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Create Room Form */}
           <Card className="md:col-span-1">
@@ -290,6 +347,7 @@ export default function AdminPanel() {
             </CardContent>
           </Card>
         </div>
+        )}
       </div>
     </main>
   )

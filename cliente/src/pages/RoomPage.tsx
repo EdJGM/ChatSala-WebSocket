@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { Separator } from "../components/ui/separator"
 import { SendIcon, InfoIcon, UserIcon, LogOutIcon } from "lucide-react"
 import { io, type Socket } from "socket.io-client"
+import fingerprintService from "../services/fingerprint-service"
 
 // Interfaces
 interface Message {
@@ -23,6 +24,7 @@ interface Message {
 interface HostInfo {
   host: string
   ip: string
+  fingerprint?: string
 }
 
 interface Participant {
@@ -42,6 +44,7 @@ export default function ChatRoom() {
   const [messages, setMessages] = useState<Message[]>([])
   const [participants, setParticipants] = useState<Participant[]>([])
   const [notification, setNotification] = useState<{ message: string; type: "info" | "error" | "success" } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   // Refs
   const socketRef = useRef<Socket | null>(null)
@@ -56,97 +59,134 @@ export default function ChatRoom() {
 
     // mismo puerto que el backend
     //const SOCKET_SERVER_URL = "http://ipbackend:5000"
+    let isMounted = true
     const SOCKET_SERVER_URL = "https://chatsala-websocket.onrender.com" 
 
-    try {
-      socketRef.current = io(SOCKET_SERVER_URL, {
-        query: {
-          nickname,
-          roomPin,
-        },
-      })
+    // Función asíncrona para inicializar la conexión
+    async function initializeConnection() {
+      try {
+        setIsLoading(true)
+        setNotification({ message: "Generando huella digital...", type: "info" })
 
-      // Connection events
-      socketRef.current.on("connect", () => {
-        setConnected(true)
-        setNotification({ message: "Conectado a la sala", type: "success" })
-        // Unirse a la sala después de conectar
-        socketRef.current?.emit("join_room", { roomPin, nickname })
-      })
+        // Obtener la huella digital de la máquina
+        const fingerprint = await fingerprintService.getFingerprint()
+        console.log("Huella digital generada:", fingerprint)
 
-      socketRef.current.on("connect_error", () => {
-        setNotification({ message: "Error al conectar al servidor", type: "error" })
-      })
+        if (!isMounted) return
 
-      // Host info
-      socketRef.current.on("host_info", (info: HostInfo) => {
-        setHostInfo(info)
-      })
+        setNotification({ message: "Conectando al servidor...", type: "info" })
 
-      // Room events
-      socketRef.current.on("room_not_found", () => {
-        setNotification({ message: "La sala no existe", type: "error" })
-        setTimeout(() => (window.location.href = "/"), 3000)
-      })
+        // Conectar a Socket.IO
+        socketRef.current = io(SOCKET_SERVER_URL)
 
-      socketRef.current.on("room_full", () => {
-        setNotification({ message: "La sala está llena", type: "error" })
-        setTimeout(() => (window.location.href = "/"), 3000)
-      })
+        // Cuando se establece la conexión, enviar la huella digital
+        socketRef.current.on("connect", () => {
+          if (!isMounted) return
+          console.log("Conectado al servidor")
+          setConnected(true)
+          setNotification({ message: "Registrando dispositivo...", type: "info" })
 
-      // Message events
-      socketRef.current.on("receive_message", (msg: Message) => {
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            ...msg,
-            timestamp: Date.now(),
-          },
-        ])
-      })
+          // Registrar la huella digital en el servidor
+          socketRef.current?.emit("register_fingerprint", { fingerprint })
+        })
 
-      // Participant events
-      socketRef.current.on("participants_update", (roomParticipants: Participant[]) => {
-        setParticipants(roomParticipants)
-      })
+        // Connection events
+        socketRef.current.on("connect_error", () => {
+          if (!isMounted) return
+          setNotification({ message: "Error al conectar al servidor", type: "error" })
+          setIsLoading(false)
+        })
 
-      socketRef.current.on("user_joined", (user: { nickname: string }) => {
-        setNotification({ message: `${user.nickname} se ha unido a la sala`, type: "info" })
-      })
+        // Host info
+        socketRef.current.on("host_info", (info: HostInfo) => {
+          if (!isMounted) return
+          setHostInfo(info)
+          setNotification({ message: "Conectado a la sala", type: "success" })
+          setIsLoading(false)
 
-      socketRef.current.on("user_left", (user: { nickname: string }) => {
-        setNotification({ message: `${user.nickname} ha abandonado la sala`, type: "info" })
-      })
+          // Unirse a la sala después de recibir la confirmación de host_info
+          socketRef.current?.emit("join_room", { roomPin, nickname })
+        })
 
-      socketRef.current.on("room_left",() => {
-        socketRef.current?.disconnect()
-        window.location.href = "/"
-      });
+        // Room events
+        socketRef.current.on("room_not_found", () => {
+          if (!isMounted) return
+          setNotification({ message: "La sala no existe", type: "error" })
+          setTimeout(() => (window.location.href = "/"), 3000)
+        })
 
-      socketRef.current.on("error", (err: { message: string }) => {
-        setNotification({ message: err.message, type: "error" });
-        setTimeout(() => (window.location.href = "/"), 3000);
-      });
+        socketRef.current.on("room_full", () => {
+          if (!isMounted) return
+          setNotification({ message: "La sala está llena", type: "error" })
+          setTimeout(() => (window.location.href = "/"), 3000)
+        })
 
-      socketRef.current.on("room_deleted", () => {
-        setNotification({ message: "La sala ha sido eliminada por el administrador.", type: "error" });
-        setTimeout(() => {
-          socketRef.current?.disconnect();
-          window.location.href = "/";
-        }, 2000); // Da tiempo a mostrar la notificación
-      });
+        // Message events
+        socketRef.current.on("receive_message", (msg: Message) => {
+          if (!isMounted) return
+          setMessages((prevMessages) => [
+            ...prevMessages,
+            {
+              ...msg,
+              timestamp: Date.now(),
+            },
+          ])
+        })
 
-      // Cleanup on unmount
-      return () => {
-        if (socketRef.current) {
-          // Notifica al servidor antes de desconectar
-          socketRef.current.emit("leave_room")
-          socketRef.current.disconnect()
-        }
+        // Participant events
+        socketRef.current.on("participants_update", (roomParticipants: Participant[]) => {
+          if (!isMounted) return
+          setParticipants(roomParticipants)
+        })
+
+        socketRef.current.on("user_joined", (user: { nickname: string }) => {
+          if (!isMounted) return
+          setNotification({ message: `${user.nickname} se ha unido a la sala`, type: "info" })
+        })
+
+        socketRef.current.on("user_left", (user: { nickname: string }) => {
+          if (!isMounted) return
+          setNotification({ message: `${user.nickname} ha abandonado la sala`, type: "info" })
+        })
+
+        socketRef.current.on("room_left", () => {
+          if (!isMounted) return
+          socketRef.current?.disconnect()
+          window.location.href = "/"
+        })
+
+        socketRef.current.on("error", (err: { message: string }) => {
+          if (!isMounted) return
+          setNotification({ message: err.message, type: "error" })
+          setTimeout(() => (window.location.href = "/"), 3000)
+        })
+
+        socketRef.current.on("room_deleted", () => {
+          if (!isMounted) return
+          setNotification({ message: "La sala ha sido eliminada por el administrador.", type: "error" })
+          setTimeout(() => {
+            socketRef.current?.disconnect()
+            window.location.href = "/"
+          }, 2000) // Da tiempo a mostrar la notificación
+        })
+      } catch (error) {
+        if (!isMounted) return
+        console.error("Error al inicializar la conexión:", error)
+        setNotification({ message: "Error al inicializar la conexión", type: "error" })
+        setIsLoading(false)
       }
-    } catch (error) {
-      console.error("Socket connection error:", error)
-      setNotification({ message: "Error al conectar al servidor", type: "error" })
+    }
+
+    initializeConnection()
+
+    // Cleanup on unmount
+    return () => {
+      isMounted = false
+      if (socketRef.current) {
+        // Notifica al servidor antes de desconectar
+        socketRef.current.emit("leave_room")
+        socketRef.current.disconnect()
+      }
     }
   }, [nickname, roomPin])
 
@@ -201,21 +241,23 @@ export default function ChatRoom() {
   return (
     <main className="flex min-h-screen flex-col md:flex-row bg-gradient-to-b from-slate-50 to-slate-100 p-4 relative">
       {/* Overlay con blur si hay notificación de error */}
-      {notification?.type === "error" && (
+      {(notification?.type === "error" || isLoading) && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
           style={{ pointerEvents: "auto" }}
         >
           <div className="max-w-md w-full">
-            <Alert variant="destructive" className="mb-4 text-center">
+            <Alert variant={notification?.type === "error" ? "destructive" : "default"} className="mb-4 text-center">
               <InfoIcon className="h-6 w-6 mr-2 inline-block" />
-              <AlertDescription className="text-lg">{notification.message}</AlertDescription>
+              <AlertDescription className="text-lg">
+                {isLoading ? "Conectando a la sala..." : notification?.message}
+              </AlertDescription>
             </Alert>
           </div>
         </div>
       )}      
       {/* Chat Area */}
-      <div className={`flex-grow md:mr-4 mb-4 md:mb-0 ${notification?.type === "error" ? "pointer-events-none blur-sm" : ""}`}>
+      <div className={`flex-grow md:mr-4 mb-4 md:mb-0 ${notification?.type === "error" || isLoading ? "pointer-events-none blur-sm" : ""}`}>
         <Card className="h-full flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex justify-between items-center">
@@ -232,8 +274,8 @@ export default function ChatRoom() {
                 Salir
               </Button>
             </div>
-            {notification && (
-              <Alert variant={notification.type === "error" ? "destructive" : "default"} className="mt-2">
+            {notification && notification.type !== "error" && (
+              <Alert variant="default" className="mt-2">
                 <InfoIcon className="h-4 w-4 mr-2" />
                 <AlertDescription>{notification.message}</AlertDescription>
               </Alert>
@@ -241,6 +283,9 @@ export default function ChatRoom() {
             {hostInfo.host && (
               <div className="text-xs text-muted-foreground mt-1">
                 Conectado desde: {hostInfo.host} ({hostInfo.ip})
+                {hostInfo.fingerprint && (
+                  <span className="block mt-1">ID de máquina: {hostInfo.fingerprint.substring(0, 8)}...</span>
+                )}
               </div>
             )}
           </CardHeader>
@@ -281,9 +326,9 @@ export default function ChatRoom() {
                 onKeyDown={handleKeyPress}
                 className="flex-grow resize-none"
                 rows={2}
-                disabled={!connected}
+                disabled={!connected || isLoading}
               />
-              <Button onClick={sendMessage} disabled={!connected} className="self-end">
+              <Button onClick={sendMessage} disabled={!connected || isLoading} className="self-end">
                 <SendIcon className="h-4 w-4" />
               </Button>
             </div>
@@ -292,7 +337,7 @@ export default function ChatRoom() {
       </div>
 
       {/* Participants Sidebar */}
-      <div className={`w-full md:w-64 ${notification?.type === "error" ? "pointer-events-none blur-sm" : ""}`}>
+      <div className={`w-full md:w-64 ${notification?.type === "error" || isLoading ? "pointer-events-none blur-sm" : ""}`}>
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="text-lg flex items-center">
