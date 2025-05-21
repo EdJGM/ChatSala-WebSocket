@@ -168,6 +168,10 @@ export default function AdminPanel() {
       setNotification({ message: "El número de participantes debe ser al menos 2", type: "error" })
       return
     }
+    if (maxPart > 100) {
+      setNotification({ message: "El número máximo de participantes por sala es 100", type: "error" })
+      return
+    }    
 
     if (socket) {
       try {
