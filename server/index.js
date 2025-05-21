@@ -96,7 +96,7 @@ function scheduleRoomDeletion(roomPin, timeoutMinutes = 10) {
         // Guardar la referencia al temporizador en la sala
         rooms.get(roomPin).deletionTimer = deletionTimer
     }
-  }
+}
 
 // Maneja las nuevas conexiones de clientes Socket.IO
 io.on("connection", (socket) => {
@@ -133,7 +133,7 @@ io.on("connection", (socket) => {
                 socket.emit("creator_rooms", creatorToRooms.get(machineFingerprint))
             } else {
                 socket.emit("creator_rooms", [])
-            }            
+            }
         })
     })
 
@@ -144,12 +144,6 @@ io.on("connection", (socket) => {
             socket.emit("error", { message: "No se ha registrado la huella de la máquina. Recarga la página." })
             return
         }
-
-        // Limitar el número total de salas a 20
-        if (rooms.size >= 20) {
-            socket.emit("error", { message: "Se ha alcanzado el número máximo de salas (20). Elimina una sala para crear otra." })
-            return
-                }
 
         // Verifica si la máquina ya está en una sala
         if (machineToRoom.has(machineFingerprint) && oneConnectionPerMachine) {
@@ -168,7 +162,7 @@ io.on("connection", (socket) => {
             participants: new Map(),
             createdAt: new Date(),
             creatorFingerprint: machineFingerprint, // Guardar el fingerprint del creador
-            deletionTimer: null, // Para el temporizador de eliminación automática            
+            deletionTimer: null, // Para el temporizador de eliminación automática
         })
 
         // Registrar esta sala como creada por este usuario
@@ -191,7 +185,7 @@ io.on("connection", (socket) => {
     })
 
     // Evento para unirse a una sala
-    socket.on("join_room", ({ roomPin, nickname }) => {
+    socket.on("join_room", async ({ roomPin, nickname }) => {
         // Verifica que el cliente haya enviado su fingerprint
         if (!machineFingerprint) {
             socket.emit("error", { message: "No se ha registrado la huella de la máquina. Recarga la página." })
@@ -214,20 +208,33 @@ io.on("connection", (socket) => {
 
         // Verifica si la máquina ya está en otra sala y si la sala tiene la restricción de una conexión por máquina
         if (room.oneConnectionPerMachine) {
-            // Si la máquina ya está en cualquier sala, bloquea
-            if (machineToRoom.has(machineFingerprint)) {
-                socket.emit("error", { message: "Solo se permite una conexión por máquina." })
-                return
+            // Extraer la parte principal del fingerprint (antes del primer guion bajo) para comparación entre navegadores
+            const mainFingerprint = machineFingerprint.split("_")[0]
+
+            // Verificar si alguna máquina con el mismo fingerprint base ya está conectada
+            let machineAlreadyConnected = false
+
+            // Comprobar en todas las salas si hay alguna máquina con el mismo fingerprint base
+            for (const [existingRoomPin, existingRoom] of rooms.entries()) {
+                if (existingRoom.oneConnectionPerMachine) {
+                    for (const participant of existingRoom.participants.values()) {
+                        const participantMainFingerprint = participant.machineFingerprint.split("_")[0]
+
+                        if (participantMainFingerprint === mainFingerprint) {
+                            machineAlreadyConnected = true
+                            break
+                        }
+                    }
+                }
+
+                if (machineAlreadyConnected) break
             }
 
-          
-
-            // Si la máquina ya está en la sala actual, bloquea
-            for (const participant of room.participants.values()) {
-                if (participant.machineFingerprint === machineFingerprint) {
-                    socket.emit("error", { message: "Solo se permite una conexión por máquina en esta sala." })
-                    return
-                }
+            if (machineAlreadyConnected) {
+                socket.emit("error", {
+                    message: "Esta máquina ya está conectada a una sala. Solo se permite una conexión por máquina física.",
+                })
+                return
             }
         }
 
@@ -287,7 +294,6 @@ io.on("connection", (socket) => {
 
     // Evento para obtener la lista de salas (para el panel de administrador)
     socket.on("get_rooms", () => {
-
         // Verificar si el cliente ha enviado su fingerprint
         if (!machineFingerprint) {
             socket.emit("error", { message: "No se ha registrado la huella de la máquina. Recarga la página." })
@@ -303,7 +309,7 @@ io.on("connection", (socket) => {
             encrypted: room.encrypted,
             oneConnectionPerMachine: room.oneConnectionPerMachine,
             createdAt: room.createdAt,
-            isCreator: room.creatorFingerprint === machineFingerprint, // Indicar si este usuario es el creador            
+            isCreator: room.creatorFingerprint === machineFingerprint, // Indicar si este usuario es el creador
         }))
 
         socket.emit("rooms_list", roomsList)
@@ -346,7 +352,7 @@ io.on("connection", (socket) => {
                 } else {
                     creatorToRooms.set(machineFingerprint, updatedRooms)
                 }
-            }            
+            }
 
             // Elimina la sala
             rooms.delete(roomPin)

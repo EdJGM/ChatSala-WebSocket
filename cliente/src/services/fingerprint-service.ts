@@ -1,3 +1,5 @@
+// Importar el servicio de almacenamiento entre navegadores
+import CrossBrowserStorage from "./cross-browser-storage"
 import FingerprintJS from "@fingerprintjs/fingerprintjs"
 
 // Clase para manejar la generación y almacenamiento de la huella digital
@@ -6,7 +8,12 @@ class FingerprintService {
     private fingerprint: string | null = null
     private fingerprintPromise: Promise<string> | null = null
 
-    private constructor() { }
+    private constructor() {
+        // Escuchar cambios en la huella compartida entre navegadores
+        CrossBrowserStorage.onFingerprintChange((fingerprint) => {
+            this.fingerprint = fingerprint
+        })
+    }
 
     // Patrón Singleton para asegurar una sola instancia
     public static getInstance(): FingerprintService {
@@ -18,6 +25,13 @@ class FingerprintService {
 
     // Obtener la huella digital (genera una nueva si no existe)
     public async getFingerprint(): Promise<string> {
+        // Verificar si ya tenemos una huella compartida entre navegadores
+        const sharedFingerprint = CrossBrowserStorage.getFingerprint()
+        if (sharedFingerprint) {
+            this.fingerprint = sharedFingerprint
+            return sharedFingerprint
+        }
+
         // Si ya tenemos la huella, la devolvemos inmediatamente
         if (this.fingerprint) {
             return this.fingerprint
@@ -33,6 +47,9 @@ class FingerprintService {
         this.fingerprint = await this.fingerprintPromise
         this.fingerprintPromise = null
 
+        // Compartir la huella entre navegadores
+        CrossBrowserStorage.setFingerprint(this.fingerprint)
+
         return this.fingerprint
     }
 
@@ -47,22 +64,44 @@ class FingerprintService {
             }
 
             // Cargar la instancia de FingerprintJS
-            const fp = await FingerprintJS.load()
+            const fp = await FingerprintJS.load({
+                monitoring: false, // Desactivar monitoreo para evitar diferencias
+            })
 
-            // Obtener la información del visitante
-            const result = await fp.get()
+            // Obtener la información del visitante con opciones para maximizar consistencia
+            const result = await fp.get({
+                // Usar solo componentes que sean estables entre navegadores
+                components: {
+                    screenResolution: true,
+                    colorDepth: true,
+                    timezone: true,
+                    platform: true,
+                    webglRenderer: true,
+                    hardwareConcurrency: true,
+                    deviceMemory: true,
+                    // Evitar componentes que varían entre navegadores
+                    userAgent: false,
+                    language: false,
+                    fonts: false,
+                    plugins: false,
+                    localStorage: false,
+                    sessionStorage: false,
+                    cookies: false,
+                    canvas: false,
+                    audio: false,
+                },
+            })
 
             // Obtener información adicional del dispositivo
             const screenInfo = `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`
             const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-            const languages = navigator.languages.join(",")
-            const cpuCores = navigator.hardwareConcurrency || "unknown"
-            const deviceMemory = (navigator as any).deviceMemory || "unknown"
             const platform = navigator.platform
-            const userAgent = navigator.userAgent
 
-            // Combinar toda la información para crear una huella más única
-            const combinedFingerprint = `${result.visitorId}_${screenInfo}_${timeZone}_${cpuCores}_${deviceMemory}_${platform}`
+            // Intentar obtener información de hardware más específica
+            const hardwareInfo = await this.getHardwareSpecificInfo()
+
+            // Combinar información que sea más estable entre navegadores
+            const combinedFingerprint = `${result.visitorId}_${screenInfo}_${timeZone}_${platform}_${hardwareInfo}`
 
             // Guardar en localStorage para futuras sesiones
             localStorage.setItem("machine_fingerprint", combinedFingerprint)
@@ -80,6 +119,39 @@ class FingerprintService {
         }
     }
 
+    // Método para obtener información específica del hardware
+    private async getHardwareSpecificInfo(): Promise<string> {
+        let hardwareInfo = ""
+
+        try {
+            // Información de CPU
+            const cpuCores = navigator.hardwareConcurrency || "unknown"
+            hardwareInfo += `_cores${cpuCores}`
+
+            // Información de memoria
+            const deviceMemory = (navigator as any).deviceMemory || "unknown"
+            hardwareInfo += `_mem${deviceMemory}`
+
+            // Información de GPU mediante WebGL
+            const canvas = document.createElement("canvas")
+            const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl")
+
+            if (gl) {
+                const debugInfo = gl.getExtension("WEBGL_debug_renderer_info")
+                if (debugInfo) {
+                    const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+                    // Solo usamos el renderer (GPU) ya que es más específico de la máquina
+                    hardwareInfo += `_gpu${renderer.replace(/\s+/g, "")}`
+                }
+            }
+
+            return hardwareInfo
+        } catch (error) {
+            console.error("Error al obtener información de hardware:", error)
+            return "hardware_error"
+        }
+    }
+
     // Método de respaldo para generar una huella más simple
     private generateFallbackFingerprint(): string {
         const canvas = document.createElement("canvas")
@@ -87,23 +159,16 @@ class FingerprintService {
 
         let fingerprint = ""
 
-        // Información del navegador
-        fingerprint += navigator.userAgent
-
-        // Información de la pantalla
+        // Información de la pantalla (más consistente entre navegadores)
         fingerprint += `_${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`
 
         // Zona horaria
         fingerprint += `_${new Date().getTimezoneOffset()}`
 
-        // Idiomas
-        fingerprint += `_${navigator.language || (navigator as any).userLanguage}`
-
         // Información de WebGL si está disponible
         if (gl) {
             const debugInfo = gl.getExtension("WEBGL_debug_renderer_info")
             if (debugInfo) {
-                fingerprint += `_${gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)}`
                 fingerprint += `_${gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)}`
             }
         }
