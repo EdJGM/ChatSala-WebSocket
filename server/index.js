@@ -145,6 +145,12 @@ io.on("connection", (socket) => {
             return
         }
 
+        // Limitar el número total de salas a 20
+        if (rooms.size >= 20) {
+            socket.emit("error", { message: "Se ha alcanzado el número máximo de salas (20). Elimina una sala para crear otra." })
+            return
+                }
+
         // Verifica si la máquina ya está en una sala
         if (machineToRoom.has(machineFingerprint) && oneConnectionPerMachine) {
             socket.emit("error", { message: "Ya estás conectado a una sala desde esta máquina. Debes salir primero." })
